@@ -15,6 +15,9 @@ newtype User = User { id :: Id, name :: String }
 And you're about to create a `Map` that uses the `Id` as key. Oftentimes it's desired that the following should not be possible:
 
 ```hs
+import Data.Map as Map
+import Data.Map (Map)
+
 myMap :: Map Id User
 myMap = Map.empty
   # Map.insert (Id "foo") (User { id: "bar", name: "Santa" })
@@ -32,6 +35,8 @@ You'd use it as follows:
 1. First you have to define a way to receive a key from your value type. You do this by providing an instance for the `Indexed` type class:
 
    ```hs
+   import Indexed.Class (class Indexed)
+
    instance Indexed Id User where
      getIndex (User { id }) = id
    ```
@@ -39,8 +44,12 @@ You'd use it as follows:
 2. Then you can use the `IxMap` API for safe CRUD operations. For instance with the `insert` function you can insert an entry to the map by only providing the value:
 
    ```hs
+   import Data.IxMap as IxMap
+   import Data.IxMap (IxMap)
+
    myMap :: IxMap Id User
    myMap = IxMap.empty
      # IxMap.insert (User { id: Id "bar", name: "Santa" })
    ```
 
+It's always possible to convert an `IxMap` to a `Map` by using the `toMap` function. The other way is possible too with `fromMap` which will of course return a `Maybe (IxMap k v)`.
