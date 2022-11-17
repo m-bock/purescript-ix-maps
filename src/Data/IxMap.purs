@@ -6,8 +6,10 @@ module Data.IxMap
   , insert
   , lookup
   , map
+  , map'
   , toMap
-  ) where
+  )
+  where
 
 import Prelude
 
@@ -20,51 +22,46 @@ import Data.Lens.Index (class Index)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), maybe, maybe')
-import Data.Tuple (Tuple)
 import Data.Tuple.Nested ((/\))
-import Indexed.Class (class Indexed, getIndex)
 
-newtype IxMap k v = IxMap (Map k v)
+data IxMap k v = IxMap (v -> k) (Map k v)
 
 toMap :: forall k v. IxMap k v -> Map k v
-toMap (IxMap mp) = mp
+toMap (IxMap _ mp) = mp
 
-fromMap :: forall k v. Eq v => Eq k => Indexed k v => Map k v -> Maybe (IxMap k v)
-fromMap mp
+fromMap :: forall k v. Eq v => Eq k => (v -> k) -> Map k v -> Maybe (IxMap k v)
+fromMap ixfn mp
   | Map.toUnfoldable mp
-      # Array.all isValidKeyValTuple = Just $ IxMap mp
-fromMap _ = Nothing
+      # Array.all (\tpl@(_ /\ val) -> tpl == (ixfn val /\ val)) = Just $ IxMap ixfn mp
+fromMap _ _ = Nothing
 
-map :: forall k k' v v'. Ord k' => Indexed k' v' => (v -> v') -> IxMap k v -> IxMap k' v'
-map f (IxMap mp) = Map.values mp
-  <#> f >>> toKeyValTuple
+map' :: forall k v. Ord k => (v -> v) -> IxMap k v -> IxMap k v
+map' f mp@(IxMap ixfn _) = map ixfn f mp
+
+map :: forall k k' v v'. Ord k' => (v' -> k') -> (v -> v') -> IxMap k v -> IxMap k' v'
+map ixfn f (IxMap _ mp) = Map.values mp
+  <#> f >>> (\x -> ixfn x /\ x)
   # Map.fromFoldable
-  # IxMap
+  # IxMap ixfn
 
-toKeyValTuple :: forall k v. Indexed k v => v -> Tuple k v
-toKeyValTuple val = getIndex val /\ val
+empty :: forall k v. (v -> k) -> IxMap k v
+empty ixfn = IxMap ixfn Map.empty
 
-isValidKeyValTuple :: forall k v. Eq k => Eq v => Indexed k v => Tuple k v -> Boolean
-isValidKeyValTuple tpl@(_ /\ val) = tpl == toKeyValTuple val
-
-empty :: forall k v. IxMap k v
-empty = IxMap Map.empty
-
-insert :: forall k v. Ord k => Indexed k v => v -> IxMap k v -> IxMap k v
-insert val (IxMap mp) = IxMap $ Map.insert (getIndex val) val mp
+insert :: forall k v. Ord k => v -> IxMap k v -> IxMap k v
+insert val (IxMap ixfn mp) = IxMap ixfn $ Map.insert (ixfn val) val mp
 
 lookup :: forall k v. Ord k => k -> IxMap k v -> Maybe v
-lookup key (IxMap mp) = Map.lookup key mp
+lookup key (IxMap _ mp) = Map.lookup key mp
 
 delete :: forall k v. Ord k => k -> IxMap k v -> IxMap k v
-delete key (IxMap mp) = IxMap $ Map.delete key mp
+delete key (IxMap ixfn mp) = IxMap ixfn $ Map.delete key mp
 
-instance (Ord k, Indexed k v) => At (IxMap k v) k v where
+instance (Ord k) => At (IxMap k v) k v where
   at k =
     lens (lookup k) \m ->
       maybe' (\_ -> delete k m) \v -> insert v m
 
-instance (Ord k, Indexed k v) => Index (IxMap k v) k v where
+instance (Ord k) => Index (IxMap k v) k v where
   ix k = affineTraversal set pre
     where
     set :: IxMap k v -> v -> IxMap k v
